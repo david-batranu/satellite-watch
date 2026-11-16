@@ -17,7 +17,8 @@
     "data:all": "npm run data:tle && npm run data:catalogs",
     "icons": "python3 scripts/make_icons.py",
     "shot": "node scripts/screenshot.mjs",
-    "deploy:pages": "node scripts/deploy-pages.mjs"
+    "deploy:pages": "PUBLISH_BRANCH=gh-pages PAGES_BASE=/satellite-watch/ node scripts/publish-branch.mjs",
+    "deploy:sky": "PUBLISH_BRANCH=deploy-sky PAGES_BASE=/sky/ node scripts/publish-branch.mjs"
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",

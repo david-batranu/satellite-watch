@@ -7,8 +7,9 @@ planets, bright stars and constellation figures all appear where they actually a
 
 No account, no backend, no tracking. It runs entirely on the device and works offline once loaded.
 
-**Live demo:** <https://david-batranu.github.io/satellite-watch/> — installable as a PWA. Motion,
-GPS and camera only work over HTTPS on a real phone; on a desktop it falls back to drag-to-look.
+**Live:** <https://seekahead.eu/sky/> (self-hosted Caddy) · <https://david-batranu.github.io/satellite-watch/> (GitHub Pages mirror)
+— both installable as a PWA. Motion, GPS and camera only work over HTTPS on a real phone; on a
+desktop the app falls back to drag-to-look.
 
 <p align="center">
   <img src="docs/screenshots/ar-sky-iss.png" width="270" alt="AR sky view with the ISS selected and its orbit track" />
@@ -55,7 +56,8 @@ npm run build        # typecheck + production build into dist/
 npm run preview      # serve the production build
 npm test             # 98 unit tests
 npm run typecheck
-npm run deploy:pages # build for GitHub Pages and push the gh-pages branch
+npm run deploy:pages # publish the GitHub Pages artifact branch
+npm run deploy:sky   # publish the /srv/caddy/sky artifact branch
 ```
 
 Requirements: Node 22+ (developed on Node 26). `npm run data:all` regenerates the bundled
@@ -206,27 +208,72 @@ label/formatting helpers.
 ## Deployment
 
 The build is fully static (`dist/`): serve it over HTTPS with `.json` as `application/json` and
-compression enabled. Any static host works (Netlify, Vercel, Cloudflare Pages, GitHub Pages,
-nginx).
+compression enabled. `PAGES_BASE` sets the path prefix the build assumes, because Vite inlines it
+into asset URLs, the service-worker scope and the web-app manifest.
+
+Two deployments are wired up, both from static artifact branches so the target host needs no
+Node.js or build step:
+
+| Target | URL | Branch | Base |
+|---|---|---|---|
+| Home server (Caddy) | <https://seekahead.eu/sky/> | `deploy-sky` | `/sky/` |
+| GitHub Pages | <https://david-batranu.github.io/satellite-watch/> | `gh-pages` | `/satellite-watch/` |
+
+```bash
+npm run deploy:pages    # build → force-push dist/ to gh-pages (Pages rebuilds automatically)
+npm run deploy:sky      # build → force-push dist/ to deploy-sky (then update the server checkout)
+```
+
+Each artifact branch carries a `deploy-info.txt` recording the source commit, build base and
+timestamp, so a deployed directory can always be traced back to a commit.
+
+### seekahead.eu/sky — Caddy on `copyleft`
+
+Caddy runs in Docker from `/srv/caddy/docker-compose.yml`, alongside the solar app. The deployment
+is a plain git checkout, mirroring how `/srv/caddy/solar-atlas` is deployed:
+
+```
+/srv/caddy/
+  Caddyfile            # seekahead.eu vhost: /solar/, /sky/, /sunlight/
+  docker-compose.yml   # mounts ./sky → /srv/sky:ro
+  solar-atlas/         # git checkout of david-batranu/solar-atlas (main)
+  sky/                 # git checkout of david-batranu/satellite-watch (deploy-sky)
+```
+
+Caddy serves it with the same hardened static-file block as the solar app (`.git` hidden and 404'd):
+
+```caddyfile
+redir /sky /sky/ 308
+
+handle_path /sky/* {
+    @git path_regexp ^/\.git($|/)
+    respond @git 404
+
+    root * /srv/sky
+    file_server {
+        hide .git
+    }
+}
+```
+
+Redeploy after `npm run deploy:sky` — no config reload needed, Caddy serves the checkout directly:
+
+```bash
+git -C /srv/caddy/sky fetch --depth 1 origin deploy-sky
+git -C /srv/caddy/sky reset --hard FETCH_HEAD
+```
+
+The host has no Node.js, which is why the build happens locally and only the artifact is checked
+out. Adding a new mount (as when `/sky` was first introduced) is the only case that needs
+`docker compose up -d` to recreate the Caddy container; validate first with
+`docker compose config -q` and `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`.
 
 ### GitHub Pages
 
-Live at **<https://david-batranu.github.io/satellite-watch/>**.
-
-```bash
-npm run deploy:pages     # builds with PAGES_BASE=/satellite-watch/ and force-pushes dist/ to gh-pages
-```
-
-The site is served from the **`gh-pages` branch** (repo → Settings → Pages → *Deploy from a
-branch* → `gh-pages` / `/`). This deliberately avoids a GitHub Actions workflow: the CLI token
-used for publishing has `repo` scope but not `workflow`, so pushing `.github/workflows/*` is
-rejected. Trade-off: the deploy is a local command rather than CI-on-push — `npm run deploy:pages`
-is the one-command replacement.
-
-Sub-path support for any host lives in `vite.config.ts` (`PAGES_BASE`), and runtime data fetches
-resolve through `src/lib/assets.ts`, so the app also works at the site root by building with
-`PAGES_BASE=/`. The service worker scope, web-app manifest, icon paths and worker URLs all follow
-the same base.
+Served from the **`gh-pages`** branch (repo → Settings → Pages → *Deploy from a branch* →
+`gh-pages` / `/`). This deliberately avoids a GitHub Actions workflow: the CLI token used for
+publishing has `repo` scope but not `workflow`, so pushing `.github/workflows/*` is rejected.
+`npm run deploy:pages` is the one-command replacement for CI-on-push.
 
 `npm run preview` is enough for a local check. The app is installable to the home screen (PWA
 manifest + maskable icons) and launches full-screen.
