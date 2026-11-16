@@ -7,6 +7,9 @@ planets, bright stars and constellation figures all appear where they actually a
 
 No account, no backend, no tracking. It runs entirely on the device and works offline once loaded.
 
+**Live demo:** <https://david-batranu.github.io/satellite-watch/> — installable as a PWA. Motion,
+GPS and camera only work over HTTPS on a real phone; on a desktop it falls back to drag-to-look.
+
 <p align="center">
   <img src="docs/screenshots/ar-sky-iss.png" width="270" alt="AR sky view with the ISS selected and its orbit track" />
   &nbsp;
@@ -52,6 +55,7 @@ npm run build        # typecheck + production build into dist/
 npm run preview      # serve the production build
 npm test             # 98 unit tests
 npm run typecheck
+npm run deploy:pages # build for GitHub Pages and push the gh-pages branch
 ```
 
 Requirements: Node 22+ (developed on Node 26). `npm run data:all` regenerates the bundled
@@ -201,10 +205,28 @@ label/formatting helpers.
 
 ## Deployment
 
-The build is fully static (`dist/`). Serve it over HTTPS at the site root (the service worker and
-manifest assume `/`; adjust `base` in `vite.config.ts` for a sub-path), with `.json` served as
-`application/json` and compression enabled. Any static host works (Netlify, Vercel, Cloudflare
-Pages, GitHub Pages, nginx).
+The build is fully static (`dist/`): serve it over HTTPS with `.json` as `application/json` and
+compression enabled. Any static host works (Netlify, Vercel, Cloudflare Pages, GitHub Pages,
+nginx).
+
+### GitHub Pages
+
+Live at **<https://david-batranu.github.io/satellite-watch/>**.
+
+```bash
+npm run deploy:pages     # builds with PAGES_BASE=/satellite-watch/ and force-pushes dist/ to gh-pages
+```
+
+The site is served from the **`gh-pages` branch** (repo → Settings → Pages → *Deploy from a
+branch* → `gh-pages` / `/`). This deliberately avoids a GitHub Actions workflow: the CLI token
+used for publishing has `repo` scope but not `workflow`, so pushing `.github/workflows/*` is
+rejected. Trade-off: the deploy is a local command rather than CI-on-push — `npm run deploy:pages`
+is the one-command replacement.
+
+Sub-path support for any host lives in `vite.config.ts` (`PAGES_BASE`), and runtime data fetches
+resolve through `src/lib/assets.ts`, so the app also works at the site root by building with
+`PAGES_BASE=/`. The service worker scope, web-app manifest, icon paths and worker URLs all follow
+the same base.
 
 `npm run preview` is enough for a local check. The app is installable to the home screen (PWA
 manifest + maskable icons) and launches full-screen.

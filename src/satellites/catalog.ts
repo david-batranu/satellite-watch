@@ -8,6 +8,7 @@
  * automatically, and always user-triggerable.
  */
 
+import { dataUrl } from '../lib/assets';
 import { storageGet, storageSet } from '../lib/storage';
 import { DEFAULT_ENABLED_GROUPS } from './groups';
 import { medianEpochAgeDays, mergeSatelliteRecords, parseSnapshot, parseTleText } from './tle';
@@ -22,7 +23,7 @@ export interface SatelliteCatalog {
 
 export type CatalogSource = 'bundled' | 'cache' | 'live';
 
-const BUNDLED_PATH = '/data/tle-snapshot.json';
+const BUNDLED_PATH = dataUrl('tle-snapshot.json');
 const CACHE_KEY = 'tle-catalog-v1';
 const CACHE_TTL_MS = 7 * 24 * 3600_000;
 const AUTO_REFRESH_AGE_MS = 24 * 3600_000;

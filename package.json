@@ -16,7 +16,8 @@
     "data:catalogs": "node scripts/fetch-catalogs.mjs",
     "data:all": "npm run data:tle && npm run data:catalogs",
     "icons": "python3 scripts/make_icons.py",
-    "shot": "node scripts/screenshot.mjs"
+    "shot": "node scripts/screenshot.mjs",
+    "deploy:pages": "node scripts/deploy-pages.mjs"
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",

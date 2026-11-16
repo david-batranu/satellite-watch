@@ -8,8 +8,16 @@ import { fileURLToPath } from 'node:url';
  * `npm run dev`         → http://localhost:5173 (desktop testing)
  * `npm run dev:https`   → https://<lan-ip>:5173 (real phone: sensors + camera
  *                          require a secure context)
+ *
+ * `PAGES_BASE` sets the deployment sub-path. GitHub Pages serves project sites
+ * from `/<repo>/`, so the deploy script builds with `PAGES_BASE=/satellite-watch/`.
+ * The service worker, manifest, icons and runtime data fetches all follow it.
  */
+const rawBase = process.env.PAGES_BASE ?? '/';
+const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+
 export default defineConfig(({ mode }) => ({
+  base,
   plugins: [
     react(),
     ...(mode === 'https' ? [basicSsl()] : []),
@@ -25,14 +33,14 @@ export default defineConfig(({ mode }) => ({
         background_color: '#05070d',
         display: 'standalone',
         orientation: 'any',
-        start_url: '/',
-        scope: '/',
+        start_url: base,
+        scope: base,
         categories: ['education', 'utilities', 'navigation'],
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: `${base}icons/icon-192.png`, sizes: '192x192', type: 'image/png' },
+          { src: `${base}icons/icon-512.png`, sizes: '512x512', type: 'image/png' },
           {
-            src: '/icons/maskable-512.png',
+            src: `${base}icons/maskable-512.png`,
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
@@ -42,7 +50,7 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,json}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-        navigateFallback: '/index.html',
+        navigateFallback: `${base}index.html`,
         cleanupOutdatedCaches: true,
       },
       devOptions: { enabled: false },

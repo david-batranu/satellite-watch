@@ -7,6 +7,7 @@
  * JavaScript bundle (see `scripts/fetch-catalogs.mjs`).
  */
 
+import { dataUrl } from '../lib/assets';
 import type { AsterismFigure, ConstellationFigure, StarCatalog } from '../types';
 
 export interface SkyData {
@@ -145,14 +146,19 @@ function parseAsterisms(raw: unknown): AsterismFigure[] {
 
 let cache: Promise<SkyData> | null = null;
 
-/** Load (once) and validate the sky datasets. */
-export function loadSkyData(fetcher: DataFetcher = defaultFetcher, base = '/data'): Promise<SkyData> {
+/**
+ * Load (once) and validate the sky datasets.
+ *
+ * Paths are relative to the deployment base so the app works from a sub-path
+ * (GitHub Pages) as well as from the site root.
+ */
+export function loadSkyData(fetcher: DataFetcher = defaultFetcher): Promise<SkyData> {
   if (cache) return cache;
   cache = (async () => {
     const [starsRaw, constellationsRaw, asterismsRaw] = await Promise.all([
-      fetcher(`${base}/stars.json`),
-      fetcher(`${base}/constellations.json`),
-      fetcher(`${base}/asterisms.json`).catch(() => null),
+      fetcher(dataUrl('stars.json')),
+      fetcher(dataUrl('constellations.json')),
+      fetcher(dataUrl('asterisms.json')).catch(() => null),
     ]);
     const starsFile = starsRaw as RawStarsFile;
     return {
