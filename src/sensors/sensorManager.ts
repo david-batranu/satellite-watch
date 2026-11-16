@@ -18,6 +18,7 @@
 
 import { clamp, normalizeSignedDeg } from '../lib/angles';
 import { ImuFusion, type FusionMode, type MotionSample } from './imuFusion';
+import { OrientationSourceGate } from './orientationGate';
 import {
   deviceOrientationToCameraQuat,
   headingOffsetFromCompass,
@@ -40,6 +41,10 @@ export interface SensorStatus {
   permission: SensorPermission;
   /** Latest compass heading, when the platform exposes one. */
   compassHeadingDeg: number | null;
+  /** Accepted orientation events per second (diagnostics). */
+  orientationHz: number;
+  /** True when the relative stream is being ignored because absolute data flows. */
+  relativeSuppressed: boolean;
   message: string | null;
 }
 
@@ -90,6 +95,7 @@ function addListener(
 
 export class SensorManager {
   private readonly fusion = new ImuFusion();
+  private readonly gate = new OrientationSourceGate();
   private calibration: SensorCalibration = {
     headingOffsetDeg: 0,
     pitchOffsetDeg: 0,
@@ -104,6 +110,7 @@ export class SensorManager {
   private orientationSeen = false;
   private absoluteSeen = false;
   private compassOffsetDeg = 0;
+  private lastCompassAt = 0;
   private compassHeadingDeg: number | null = null;
   private hasCompass = false;
   private hasGyro = false;
@@ -183,10 +190,18 @@ export class SensorManager {
   }
 
   private handleOrientation(event: CompassOrientationEvent, absoluteEvent: boolean): void {
+    const now = performance.now();
+    const isAbsolute = absoluteEvent || event.absolute === true;
+
+    // Chrome on Android fires both the absolute and the relative stream from the
+    // same sensor, with different yaw origins. Feeding both into the fusion makes
+    // it chase two headings every frame — the sky trembles. Trust absolute while
+    // it is alive and ignore the relative duplicate.
+    if (!this.gate.accept(isAbsolute ? 'absolute' : 'relative', now)) return;
+
     const alpha = typeof event.alpha === 'number' ? event.alpha : 0;
     const beta = typeof event.beta === 'number' ? event.beta : 0;
     const gamma = typeof event.gamma === 'number' ? event.gamma : 0;
-    const isAbsolute = absoluteEvent || event.absolute === true;
     this.screenAngleDeg = readScreenAngleDeg();
 
     const sample: DeviceOrientationSample = { alpha, beta, gamma, absolute: isAbsolute };
@@ -198,16 +213,20 @@ export class SensorManager {
       const candidate = headingOffsetFromCompass(raw, heading);
       if (candidate !== null) {
         this.hasCompass = true;
-        // Low-pass the offset: compass readings jitter by a degree or two.
+        // Smooth the offset over time (compass readings jitter by a degree or
+        // two); a fixed per-event gain would be frame-rate dependent.
+        const dt = this.lastCompassAt > 0 ? (now - this.lastCompassAt) / 1000 : 0.05;
+        const gain = clamp(1 - Math.exp(-clamp(dt, 0.001, 0.5) / 0.5), 0.01, 1);
         const delta = normalizeSignedDeg(candidate - this.compassOffsetDeg);
-        this.compassOffsetDeg = normalizeSignedDeg(this.compassOffsetDeg + delta * 0.12);
+        this.compassOffsetDeg = normalizeSignedDeg(this.compassOffsetDeg + delta * gain);
+        this.lastCompassAt = now;
       }
     }
 
     if (isAbsolute) this.absoluteSeen = true;
     this.orientationSeen = true;
-    this.lastOrientationAt = performance.now();
-    this.fusion.onOrientation(sample, this.screenAngleDeg, this.lastOrientationAt);
+    this.lastOrientationAt = now;
+    this.fusion.onOrientation(sample, this.screenAngleDeg, now);
   }
 
   private handleMotion(event: DeviceMotionEvent): void {
@@ -281,6 +300,8 @@ export class SensorManager {
       screenAngleDeg: this.screenAngleDeg,
       permission: this.permission,
       compassHeadingDeg: this.compassHeadingDeg,
+      orientationHz: Math.round(this.gate.eventsPerSecond),
+      relativeSuppressed: this.gate.isRelativeSuppressed(now),
       message,
     };
   }
@@ -306,6 +327,8 @@ export class SensorManager {
     this.orientationSeen = false;
     this.lastOrientationAt = 0;
     this.lastMotionAt = 0;
+    this.lastCompassAt = 0;
+    this.gate.reset();
     this.fusion.reset();
   }
 

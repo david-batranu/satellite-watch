@@ -126,11 +126,20 @@ propagated in TEME by satellite.js, rotated to Earth-fixed with GMST, then to th
 frame. Everything ends up in a three.js Y-up world where **+X = East, +Y = Up, +Z = South**, and
 the camera quaternion comes from the W3C device-orientation model.
 
-**Orientation.** `deviceorientationabsolute` is preferred (Android); on iOS, where alpha is
+**Orientation.** Only **one** orientation stream is used: `deviceorientationabsolute` is preferred,
+and the relative `deviceorientation` stream is suppressed while absolute data flows. (Chrome on
+Android fires both from the same sensor with different yaw origins; feeding both made the camera
+chase two headings — a 30° heading error and a visibly trembling sky.) On iOS, where alpha is
 relative, the app measures the offset against `webkitCompassHeading` whenever the phone is held
-flat and then tracks it. A complementary filter fuses the OS orientation with raw gyroscope and
-accelerometer samples (`src/sensors/imuFusion.ts`), which smooths 10–20 Hz sensor events up to
-60 fps and provides a fallback when `deviceorientation` never fires.
+flat and tracks it over time.
+
+A complementary filter (`src/sensors/imuFusion.ts`) fuses that with raw gyroscope and
+accelerometer samples. Heading and tilt are damped **separately** with dt-aware time constants
+(`src/sensors/quatFilters.ts`, swing–twist decomposition), and the damping adapts to the measured
+rotation speed: heavy while the phone is still, light while you turn. The gyro is only integrated
+above a noise dead band, and the accelerometer is only used as a slow tilt reference when OS
+orientation events go quiet — so resting sensor noise never reaches the sky, while 10–20 Hz sensor
+events still look smooth at 60 fps. `Camera smoothing` in Settings scales the time constants.
 
 **Rendering.** one WebGL draw pass for stars, constellation lines, satellites and the orbit track,
 plus a 2D canvas for labels, the heading ribbon, the Sun/Moon/planet discs, the reticle and the
@@ -184,6 +193,10 @@ sheet has an explicit **Refresh TLEs** button.
   including precession and refraction.
 - **Sensor alignment** is the dominant real-world error: phone compasses drift by degrees. The
   calibration sheet exists for this reason, and `manualLook` gives a deterministic fallback.
+- **Orientation jitter** is filtered, not eliminated: simulated resting noise (σ 1.5° heading)
+  produces <0.2° of frame-to-frame camera movement, but a noisy magnetometer near metal can still
+  wobble slowly. Raise `Camera smoothing` if the view feels restless; it trades steadiness for lag
+  when turning.
 - The camera field of view cannot be read from the web platform; 68° vertical is a good default
   for phone main cameras and is adjustable (pinch or the calibration sheet).
 - Sun/Moon/planet discs use a minimum on-screen size so they stay tappable; they are not rendered

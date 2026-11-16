@@ -97,6 +97,13 @@ export function CalibrationSheet() {
         <Row label="Compass" value={sensor?.compass ? 'Available' : 'Not available'} />
         <Row label="Gyroscope" value={sensor?.gyroscope ? 'Streaming' : 'Not available'} />
         <Row label="Accelerometer" value={sensor?.accelerometer ? 'Streaming' : 'Not available'} />
+        <Row
+          label="Orientation rate"
+          value={sensor?.orientationHz ? `${sensor.orientationHz} Hz` : '—'}
+        />
+        {sensor?.relativeSuppressed ? (
+          <Row label="Relative stream" value="Ignored (absolute in use)" />
+        ) : null}
         <Row label="Motion permission" value={PERMISSION_LABEL[sensor?.permission ?? 'unknown']} />
         <Row label="Screen orientation" value={`${sensor?.screenAngleDeg ?? 0}°`} />
         <Row label="Fusion mode" value={(sensor?.fusion ?? 'imu').toUpperCase()} />
