@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#05070d" />
+    <meta
+      name="description"
+      content="Point your phone at the sky to see satellites, planets, stars and constellations in real time. GPS + motion sensors, live camera overlay, offline ready."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SkyWatch" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>Satellite Watch — AR Sky</title>
+    <style>
+      /* Boot splash: visible until React takes over, then removed in main.tsx. */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #05070d;
+        overscroll-behavior: none;
+      }
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at 50% 38%, #0d1c30 0%, #05070d 62%);
+        color: #cbd5e1;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        z-index: 100;
+      }
+      #boot .ring {
+        width: 74px;
+        height: 74px;
+        border-radius: 50%;
+        border: 1px solid rgba(103, 232, 249, 0.18);
+        border-top-color: #67e8f9;
+        animation: bootspin 1.1s linear infinite;
+        margin: 0 auto 18px;
+      }
+      #boot .word {
+        font-size: 13px;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        opacity: 0.75;
+        text-align: center;
+      }
+      @keyframes bootspin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot .ring {
+          animation-duration: 3s;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="boot"><div><div class="ring"></div><div class="word">Satellite Watch</div></div></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

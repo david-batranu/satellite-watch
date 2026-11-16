@@ -1,0 +1,41 @@
+{
+  "name": "satellite-watch",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Mobile-first AR sky SPA: satellites, planets, stars and constellations over the live camera feed.",
+  "scripts": {
+    "dev": "vite",
+    "dev:https": "vite --host --mode https",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "data:tle": "node scripts/fetch-tle.mjs",
+    "data:catalogs": "node scripts/fetch-catalogs.mjs",
+    "data:all": "npm run data:tle && npm run data:catalogs",
+    "icons": "python3 scripts/make_icons.py",
+    "shot": "node scripts/screenshot.mjs"
+  },
+  "dependencies": {
+    "astronomy-engine": "^2.1.19",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "satellite.js": "^5.0.0",
+    "three": "^0.187.0",
+    "zustand": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.187.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.8",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.1.0"
+  }
+}
