@@ -1,0 +1,5 @@
+repo:    https://github.com/david-batranu/satellite-watch
+branch:  deploy-sky
+base:    /sky/
+source:  964593a62659e03e420b0d7fc3fb0d11279701dc
+built:   2026-11-17T10:14:36.875Z
