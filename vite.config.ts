@@ -49,6 +49,9 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,json}'],
+        // Starlink is ~1.9 MB and only needed when the layer is enabled; it is
+        // fetched on demand and cached in IndexedDB instead of precached.
+        globIgnores: ['data/starlink.json'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallback: `${base}index.html`,
         cleanupOutdatedCaches: true,

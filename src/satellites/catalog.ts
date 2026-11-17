@@ -47,6 +47,72 @@ export async function loadBundledCatalog(fetcher: JsonFetcher = fetchJson): Prom
   };
 }
 
+/**
+ * Heavy groups (Starlink is ~10,600 objects) are shipped as separate files and
+ * loaded on demand, so the startup download stays small. Records are cached in
+ * IndexedDB after the first load and work offline afterwards.
+ */
+export const OPTIONAL_GROUPS = ['starlink'] as const;
+export type OptionalGroupId = (typeof OPTIONAL_GROUPS)[number];
+
+export interface GroupCatalog {
+  group: OptionalGroupId;
+  records: SatelliteRecord[];
+  generatedAt: string;
+  count: number;
+}
+
+const GROUP_CACHE_PREFIX = 'tle-group-v1:';
+const GROUP_CACHE_TTL_MS = 7 * 24 * 3600_000;
+
+function isGroupCatalog(value: unknown): value is GroupCatalog {
+  const catalog = value as GroupCatalog | null;
+  return (
+    !!catalog &&
+    typeof catalog.group === 'string' &&
+    Array.isArray(catalog.records) &&
+    catalog.records.length > 0 &&
+    typeof catalog.generatedAt === 'string'
+  );
+}
+
+/**
+ * Bundled catalogue for an optional group, with an IndexedDB cache.
+ *
+ * The cache is deliberately preferred over the network: the SPA works offline
+ * and the bundled file is only downloaded every few days at most.
+ */
+export async function loadGroupCatalog(
+  group: OptionalGroupId,
+  fetcher: JsonFetcher = fetchJson,
+  now = Date.now(),
+): Promise<GroupCatalog> {
+  const cacheKey = `${GROUP_CACHE_PREFIX}${group}`;
+  try {
+    const cached = await storageGet<GroupCatalog>(cacheKey);
+    if (isGroupCatalog(cached)) {
+      const savedAt = Date.parse(cached.generatedAt);
+      if (!Number.isFinite(savedAt) || now - savedAt <= GROUP_CACHE_TTL_MS) return cached;
+    }
+  } catch {
+    /* cache is best-effort */
+  }
+
+  const snapshot = parseSnapshot(await fetcher(dataUrl(`${group}.json`)));
+  const catalog: GroupCatalog = {
+    group,
+    records: snapshot.satellites,
+    generatedAt: snapshot.generatedAt,
+    count: snapshot.satellites.length,
+  };
+  try {
+    await storageSet(cacheKey, catalog);
+  } catch {
+    /* caching is optional */
+  }
+  return catalog;
+}
+
 function isCatalogLike(value: unknown): value is SatelliteCatalog {
   const catalog = value as SatelliteCatalog | null;
   return (

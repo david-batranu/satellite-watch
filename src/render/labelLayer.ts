@@ -21,6 +21,8 @@ export interface LabelItem {
   priority: number;
   color: string;
   selected?: boolean;
+  /** Marker-only item: tappable, never labelled (dense layers such as Starlink). */
+  unlabeled?: boolean;
 }
 
 export interface BodyMarker {
@@ -350,8 +352,25 @@ export class LabelLayer {
     const maxY = this.height - frame.bottomInset - 4;
     let drawn = 0;
 
+    // Marker-only items (dense layers such as Starlink) are tappable but never
+    // labelled; register them before the label budget can cut the loop short.
+    for (const item of sorted) {
+      if (!item.unlabeled) continue;
+      const markerPoint = projectAzAlt(view, item.az, item.alt);
+      if (markerPoint?.onScreen) {
+        this.hitTargets.push({
+          id: item.id,
+          kind: item.kind,
+          x: markerPoint.x,
+          y: markerPoint.y,
+          radius: 10,
+        });
+      }
+    }
+
     for (const item of sorted) {
       if (drawn >= frame.maxLabels) break;
+      if (item.unlabeled) continue;
       const point = projectAzAlt(view, item.az, item.alt);
       if (!point || !point.onScreen) continue;
 

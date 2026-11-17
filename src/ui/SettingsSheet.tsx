@@ -151,6 +151,10 @@ export function SettingsSheet() {
             );
           })}
         </div>
+        <p className="section__note">
+          Starlink adds about 10,600 objects. It is downloaded on first use and cached, so the
+          default view stays fast.
+        </p>
         <Toggle
           label="Satellites"
           hint="Show satellites above the horizon"

@@ -21,6 +21,8 @@ desktop the app falls back to drag-to-look.
 <p align="center">
   <img src="docs/screenshots/planet-orbits.png" width="270" alt="Planet orbit lines against the stars, with Mars's retrograde loop" />
   &nbsp;
+  <img src="docs/screenshots/starlink-layer.png" width="270" alt="Starlink layer enabled: ~10,600 objects, dense markers without label clutter" />
+  &nbsp;
   <img src="docs/screenshots/onboarding.png" width="240" alt="Permission onboarding" />
   &nbsp;
   <img src="docs/screenshots/settings.png" width="240" alt="Settings sheet" />
@@ -32,7 +34,10 @@ desktop the app falls back to drag-to-look.
 
 - **Satellites** — ~480 tracked objects (space stations, the brightest satellites, weather,
   science, GPS/Galileo/BeiDou, Iridium) propagated with SGP4 in a Web Worker, colour-coded by
-  category, dimmed when they are inside the Earth's shadow.
+  category, dimmed when they are inside the Earth's shadow. An optional **Starlink** layer adds
+  the full ~10,600-object constellation; it downloads on first use (not part of the initial
+  install), caches on the device, and renders as dense markers without flooding the screen with
+  labels.
 - **Orbit tracks** — selecting a satellite draws its path across your local sky for the next
   hour and a quarter, fading from past to future.
 - **Pass predictions** — rise, culmination and set for the next 12 hours, with maximum elevation,
@@ -183,10 +188,19 @@ public/data/   stars.json, constellations.json, asterisms.json, tle-snapshot.jso
 | Dataset | Source | Refresh |
 |---|---|---|
 | TLEs (~480 sats) | [CelesTrak](https://celestrak.org) `gp.php` | bundled snapshot + on-demand/auto refresh in the browser (CORS-enabled), cached in IndexedDB |
+| Starlink (~10,600 sats) | [CelesTrak](https://celestrak.org) `gp.php?GROUP=starlink` | separate on-demand file (not precached), cached in IndexedDB after first load |
 | Stars, constellations, asterisms | [d3-celestial](https://github.com/ofrohn/d3-celestial) (Hipparcos, IAU figures) | `npm run data:catalogs` |
 | Sun/Moon/planets | [astronomy-engine](https://github.com/cosinekitty/astronomy) at runtime | — |
 
-`npm run data:tle` re-fetches the snapshot from CelesTrak (with TLE checksum validation). The app
+`npm run data:tle` re-fetches the snapshot (and the Starlink file) from CelesTrak, with TLE
+checksum validation. CelesTrak throttles the large group queries; if the Starlink request returns
+HTTP 403, pass a previously downloaded TLE file instead:
+
+```bash
+STARLINK_TLE_FILE=/path/to/starlink.tle TLE_SKIP_BASE=1 npm run data:tle
+```
+
+The app
 also refreshes elements itself when the cached copy is older than ~1.5 days, and the Settings
 sheet has an explicit **Refresh TLEs** button.
 
@@ -208,8 +222,7 @@ sheet has an explicit **Refresh TLEs** button.
   for phone main cameras and is adjustable (pinch or the calibration sheet).
 - Sun/Moon/planet discs use a minimum on-screen size so they stay tappable; they are not rendered
   to scale at short focal lengths.
-- Not included (yet): deep-sky objects, a ground-track map, Starlink-scale catalogues (10k+
-  objects), pass notifications, sharing.
+- Not included (yet): deep-sky objects, a ground-track map, pass notifications, sharing.
 
 ## Testing
 

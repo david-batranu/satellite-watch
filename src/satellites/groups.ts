@@ -68,6 +68,15 @@ export const SATELLITE_GROUP_META: Record<SatelliteGroupId, SatelliteGroupMeta> 
     defaultEnabled: true,
     description: 'Chinese navigation constellation.',
   },
+  starlink: {
+    id: 'starlink',
+    label: 'Starlink',
+    shortLabel: 'Starlink',
+    color: '#f472b6',
+    defaultEnabled: false,
+    description:
+      'The Starlink broadband constellation — about 10,600 objects. A large dataset that loads on first use; expect a sky full of fast-moving points.',
+  },
   'iridium-NEXT': {
     id: 'iridium-NEXT',
     label: 'Iridium',
@@ -87,6 +96,7 @@ export const SATELLITE_GROUP_LIST: readonly SatelliteGroupMeta[] = [
   SATELLITE_GROUP_META.galileo,
   SATELLITE_GROUP_META.beidou,
   SATELLITE_GROUP_META['iridium-NEXT'],
+  SATELLITE_GROUP_META.starlink,
 ];
 
 export const DEFAULT_ENABLED_GROUPS: SatelliteGroupId[] = SATELLITE_GROUP_LIST.filter(

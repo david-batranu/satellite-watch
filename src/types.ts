@@ -59,6 +59,7 @@ export const SATELLITE_GROUPS = [
   'galileo',
   'beidou',
   'iridium-NEXT',
+  'starlink',
 ] as const;
 
 export type SatelliteGroupId = (typeof SATELLITE_GROUPS)[number];

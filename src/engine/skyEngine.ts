@@ -26,12 +26,15 @@ import { LabelLayer, type BodyMarker, type LabelFrame, type LabelItem } from '..
 import type { CameraView } from '../render/projection';
 import { SkyRenderer, SKY_RADIUS, type LayerVisibility } from '../render/skyRenderer';
 import {
+  OPTIONAL_GROUPS,
   applyLiveRefresh,
   catalogAgeMs,
   fetchLiveElements,
   loadCatalog,
+  loadGroupCatalog,
   shouldAutoRefresh,
   type CatalogSource,
+  type OptionalGroupId,
   type SatelliteCatalog,
 } from '../satellites/catalog';
 import {
@@ -174,6 +177,11 @@ const TRACK_INTERVAL_MS = 8_000;
 const TRACK_BEFORE_MINUTES = 18;
 const TRACK_AFTER_MINUTES = 84;
 const TRACK_CAPACITY = 600;
+/** GPU point capacity: the base catalogue plus the optional Starlink group. */
+const MAX_SATELLITE_CAPACITY = 12_000;
+/** Large catalogues propagate less often to keep phones cool. */
+const LARGE_CATALOG_INTERVAL_MS = 900;
+const LARGE_CATALOG_THRESHOLD = 3000;
 /** Vertex capacity for the planet orbit lines (8 bodies × 179 segments × 2). */
 const BODY_PATH_MAX_VERTICES = 4096;
 /** The sampled paths move slowly; recompute the samples at most this often. */
@@ -237,6 +245,8 @@ export class SkyEngine {
   private entries: SatelliteEntry[] = [];
   private indexByNorad = new Map<number, number>();
   private worker: Worker | null = null;
+  /** Lazy-loaded heavy groups (currently Starlink) and their load state. */
+  private readonly optionalGroups = new Map<OptionalGroupId, 'loading' | 'loaded' | 'error'>();
 
   private satelliteStates: SatelliteSkyState[] = [];
   private satelliteComputeMs = 0;
@@ -346,6 +356,7 @@ export class SkyEngine {
       console.warn('[engine] sky data unavailable', error);
     }
     await this.loadSatellites();
+    this.ensureOptionalGroups();
 
     this.prepareStarBuffers();
     this.createLayers();
@@ -396,6 +407,62 @@ export class SkyEngine {
     this.pushDataStatus();
   }
 
+  /**
+   * Load any heavy optional group (Starlink) that is enabled but not in memory.
+   *
+   * Deliberately fire-and-forget: the layer switches on once the data arrives and
+   * the worker is reconfigured. The catalogue is cached in IndexedDB after the
+   * first load, so later sessions start from disk.
+   */
+  private ensureOptionalGroups(): void {
+    const enabled = new Set(this.settings.satelliteGroups);
+    for (const group of OPTIONAL_GROUPS) {
+      if (!enabled.has(group)) continue;
+      const state = this.optionalGroups.get(group);
+      if (state === 'loading' || state === 'loaded') continue;
+      this.optionalGroups.set(group, 'loading');
+      void this.loadOptionalGroup(group);
+    }
+  }
+
+  private async loadOptionalGroup(group: OptionalGroupId): Promise<void> {
+    try {
+      const catalog = await loadGroupCatalog(group);
+      if (this.disposed) return;
+      this.mergeGroupRecords(group, catalog.records);
+      this.optionalGroups.set(group, 'loaded');
+    } catch (error) {
+      this.optionalGroups.set(group, 'error');
+      console.warn(`[engine] optional group "${group}" unavailable`, error);
+    }
+  }
+
+  /**
+   * Append lazily loaded records, keeping indices aligned with the worker (which
+   * receives the merged array) and the renderer buffers.
+   */
+  private mergeGroupRecords(group: OptionalGroupId, records: readonly SatelliteRecord[]): void {
+    const known = new Set(this.records.map((record) => record.norad));
+    const additions = records.filter((record) => !known.has(record.norad));
+    if (additions.length === 0) return;
+
+    const base = this.records.length;
+    const newEntries = createEntries(additions).map((entry) => ({
+      ...entry,
+      index: entry.index + base,
+    }));
+
+    this.records = [...this.records, ...additions];
+    this.entries = [...this.entries, ...newEntries];
+    additions.forEach((record, offset) => this.indexByNorad.set(record.norad, base + offset));
+    this.catalogVersion++;
+    this.prepareSatelliteBuffers();
+    this.configureWorker();
+    this.astroDirty = true;
+    this.pushDataStatus();
+    console.info(`[engine] ${group}: ${additions.length} objects loaded (${this.records.length} total)`);
+  }
+
   private prepareStarBuffers(): void {
     const stars = this.skyData?.stars;
     if (!stars) return;
@@ -443,11 +510,15 @@ export class SkyEngine {
     this.records.forEach((record, index) => {
       const isStation = record.groups.includes('stations');
       const isVisual = record.groups.includes('visual');
-      this.satelliteBaseSizes[index] = isStation ? 9.5 : isVisual ? 7.5 : 6.4;
+      // Starlink is a dense layer: keep those points small and dim so the sky
+      // stays readable when thousands are enabled.
+      const isStarlink = record.groups.length === 1 && record.groups[0] === 'starlink';
+      this.satelliteBaseSizes[index] = isStation ? 9.5 : isVisual ? 7.5 : isStarlink ? 5.2 : 6.4;
       const rgb = hexToRgb(satelliteColor(record.groups));
-      this.satelliteBaseColors[index * 3] = rgb[0];
-      this.satelliteBaseColors[index * 3 + 1] = rgb[1];
-      this.satelliteBaseColors[index * 3 + 2] = rgb[2];
+      const dim = isStarlink ? 0.78 : 1;
+      this.satelliteBaseColors[index * 3] = rgb[0] * dim;
+      this.satelliteBaseColors[index * 3 + 1] = rgb[1] * dim;
+      this.satelliteBaseColors[index * 3 + 2] = rgb[2] * dim;
     });
   }
 
@@ -456,7 +527,7 @@ export class SkyEngine {
       stars: Math.max(1000, this.skyData?.stars.count ?? 6000),
       constellationVertices: Math.max(512, (this.constellationGeometry?.segments.length ?? 0) * 2),
       asterismVertices: Math.max(512, (this.asterismGeometry?.segments.length ?? 0) * 2),
-      satellites: Math.max(256, this.records.length),
+      satellites: Math.max(256, this.records.length, MAX_SATELLITE_CAPACITY),
       trackPoints: TRACK_CAPACITY,
       bodyPathVertices: BODY_PATH_MAX_VERTICES,
     });
@@ -570,6 +641,7 @@ export class SkyEngine {
         type: 'groups',
         groups: next.satelliteGroups,
       } satisfies WorkerInMessage);
+      this.ensureOptionalGroups();
     }
     if (next.manualLook && !previous.manualLook) {
       const view = cameraAzAlt(this.currentQuaternion());
@@ -951,7 +1023,9 @@ export class SkyEngine {
       this.astroDirty = false;
     }
 
-    if (nowMs - this.lastSatelliteAt > SATELLITE_INTERVAL_MS) {
+    const satelliteInterval =
+      this.records.length > LARGE_CATALOG_THRESHOLD ? LARGE_CATALOG_INTERVAL_MS : SATELLITE_INTERVAL_MS;
+    if (nowMs - this.lastSatelliteAt > satelliteInterval) {
       this.lastSatelliteAt = nowMs;
       this.tickSatellites(nowMs);
     }
@@ -1263,15 +1337,22 @@ export class SkyEngine {
     for (const state of this.satelliteStates) {
       const record = this.records[state.index];
       if (!record || state.el < 5) continue;
+      const isSelected = selectedId === `sat:${record.norad}`;
+      // Starlink is a dense layer (hundreds above the horizon): labelling every
+      // object would bury the sky under pills. Label only the selected one.
+      const isStarlink = record.groups.length === 1 && record.groups[0] === 'starlink';
       items.push({
         id: `sat:${record.norad}`,
         kind: 'satellite',
-        label: satelliteDisplayName(record),
+        // Hundreds of Starlink objects are above the horizon at once: keep them
+        // tappable markers, not labelled pills (the selected one is labelled).
+        label: isStarlink && !isSelected ? '' : satelliteDisplayName(record),
+        unlabeled: isStarlink && !isSelected,
         az: state.az,
         alt: state.el,
-        priority: state.el > 20 ? 70 : 55,
+        priority: isStarlink && !isSelected ? 5 : state.el > 20 ? 70 : 55,
         color: satelliteColor(record.groups),
-        selected: selectedId === `sat:${record.norad}`,
+        selected: isSelected,
       });
     }
     }

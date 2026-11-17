@@ -10,7 +10,7 @@
  *
  * Run with: npm run data:tle
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,6 +30,13 @@ const GROUPS = [
   'beidou',
   'iridium-NEXT',
 ];
+
+/**
+ * Heavy groups are written as separate files and loaded on demand: the initial
+ * app download stays small, and the worker only propagates groups that are
+ * enabled, so Starlink costs nothing until the user turns the layer on.
+ */
+const OPTIONAL_GROUPS = ['starlink'];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -64,7 +71,11 @@ async function fetchGroup(group) {
   const url = `${API}?GROUP=${encodeURIComponent(group)}&FORMAT=tle`;
   const res = await fetch(url, { headers: { 'User-Agent': UA } });
   if (!res.ok) throw new Error(`${group}: HTTP ${res.status}`);
-  const text = await res.text();
+  return parseTleText(await res.text());
+}
+
+/** Parse a CelesTrak TLE bulk text response. */
+function parseTleText(text) {
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
 
   const records = [];
@@ -93,8 +104,48 @@ function assert(cond, msg) {
   if (!cond) throw new Error(`validation failed: ${msg}`);
 }
 
+/**
+ * Environment overrides, useful when CelesTrak throttles the big group queries
+ * (a 10k-object group returns HTTP 403 when queried too often):
+ *
+ *   STARLINK_TLE_FILE=/tmp/starlink.txt TLE_SKIP_BASE=1 node scripts/fetch-tle.mjs
+ */
+async function writeOptionalGroups() {
+  for (const group of OPTIONAL_GROUPS) {
+    try {
+      const envFile = process.env[`${group.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_TLE_FILE`];
+      const records = envFile
+        ? parseTleText(await readFile(envFile, 'utf8'))
+        : await fetchGroup(group);
+      assert(records.length > 100, `${group}: only ${records.length} objects`);
+      const payload = {
+        generatedAt: new Date().toISOString(),
+        source: API,
+        groups: [group],
+        counts: { [group]: records.length },
+        satellites: records
+          .map((record) => ({ ...record, groups: [group] }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      };
+      const output = resolve(OUT_DIR, `${group}.json`);
+      await writeFile(output, JSON.stringify(payload));
+      console.log(`  ${group.padEnd(14)} ${String(records.length).padStart(5)} optional objects → ${output}`);
+    } catch (err) {
+      // Keep a previously generated file so offline/CI builds still work.
+      console.warn(`  ${group.padEnd(14)} FAILED: ${err.message} (keeping existing file)`);
+    }
+    await sleep(250);
+  }
+}
+
 async function main() {
   await mkdir(OUT_DIR, { recursive: true });
+  if (process.env.TLE_SKIP_BASE === '1') {
+    console.log('→ skipping base snapshot (TLE_SKIP_BASE=1)\n');
+    console.log('→ optional on-demand groups\n');
+    await writeOptionalGroups();
+    return;
+  }
   console.log('→ downloading TLEs from CelesTrak\n');
 
   /** @type {Map<number, {norad:number,name:string,tle1:string,tle2:string,epoch:number|null,groups:Set<string>}>} */
@@ -154,6 +205,9 @@ async function main() {
     satellites,
   };
   await writeFile(resolve(OUT_DIR, 'tle-snapshot.json'), JSON.stringify(payload));
+
+  console.log('\n→ optional on-demand groups\n');
+  await writeOptionalGroups();
 
   console.log(
     [
