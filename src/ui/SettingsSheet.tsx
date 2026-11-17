@@ -92,6 +92,12 @@ export function SettingsSheet() {
           onChange={(showPlanets) => updateSettings({ showPlanets })}
         />
         <Toggle
+          label="Planet orbits"
+          hint="Apparent path of each planet against the stars over the next year"
+          checked={settings.showBodyPaths}
+          onChange={(showBodyPaths) => updateSettings({ showBodyPaths })}
+        />
+        <Toggle
           label="Horizon line"
           checked={settings.showHorizon}
           onChange={(showHorizon) => updateSettings({ showHorizon })}

@@ -32,6 +32,7 @@ export interface LayerVisibility {
   satellites: boolean;
   horizon: boolean;
   orbits: boolean;
+  bodyPaths: boolean;
 }
 
 export const DEFAULT_LAYERS: LayerVisibility = {
@@ -41,6 +42,7 @@ export const DEFAULT_LAYERS: LayerVisibility = {
   satellites: true,
   horizon: true,
   orbits: true,
+  bodyPaths: true,
 };
 
 export interface RendererCapacities {
@@ -49,6 +51,7 @@ export interface RendererCapacities {
   asterismVertices: number;
   satellites: number;
   trackPoints: number;
+  bodyPathVertices: number;
 }
 
 interface PointCloud {
@@ -134,6 +137,11 @@ export class SkyRenderer {
   private readonly trackPositions: THREE.BufferAttribute;
   private readonly trackColors: THREE.BufferAttribute;
   private readonly trackCapacity: number;
+  private readonly bodyPathLines: THREE.LineSegments;
+  private readonly bodyPathGeometry: THREE.BufferGeometry;
+  private readonly bodyPathPositionsAttr: THREE.BufferAttribute;
+  private readonly bodyPathColorsAttr: THREE.BufferAttribute;
+  private readonly bodyPathCapacity: number;
   private pixelRatio = 1;
   private width = 1;
   private height = 1;
@@ -213,6 +221,35 @@ export class SkyRenderer {
     this.track.frustumCulled = false;
     this.track.renderOrder = 6;
 
+    this.bodyPathCapacity = capacities.bodyPathVertices;
+    this.bodyPathGeometry = new THREE.BufferGeometry();
+    this.bodyPathPositionsAttr = new THREE.BufferAttribute(
+      new Float32Array(capacities.bodyPathVertices * 3),
+      3,
+    );
+    this.bodyPathColorsAttr = new THREE.BufferAttribute(
+      new Float32Array(capacities.bodyPathVertices * 3),
+      3,
+    );
+    this.bodyPathPositionsAttr.setUsage(THREE.DynamicDrawUsage);
+    this.bodyPathColorsAttr.setUsage(THREE.DynamicDrawUsage);
+    this.bodyPathGeometry.setAttribute('position', this.bodyPathPositionsAttr);
+    this.bodyPathGeometry.setAttribute('color', this.bodyPathColorsAttr);
+    this.bodyPathGeometry.setDrawRange(0, 0);
+    this.bodyPathLines = new THREE.LineSegments(
+      this.bodyPathGeometry,
+      new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.9,
+        depthTest: false,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    this.bodyPathLines.frustumCulled = false;
+    this.bodyPathLines.renderOrder = 4;
+
     this.scene.add(
       this.stars.points,
       this.satellites.points,
@@ -220,6 +257,7 @@ export class SkyRenderer {
       this.asterisms.line,
       this.horizon,
       this.track,
+      this.bodyPathLines,
     );
     this.applyLayers();
   }
@@ -247,6 +285,7 @@ export class SkyRenderer {
     this.asterisms.line.visible = this.layers.asterisms;
     this.horizon.visible = this.layers.horizon;
     this.track.visible = this.layers.orbits;
+    this.bodyPathLines.visible = this.layers.bodyPaths;
   }
 
   updateStars(positions: Float32Array, sizes: Float32Array, colors: Float32Array, count: number): void {
@@ -304,6 +343,20 @@ export class SkyRenderer {
   }
 
   /** Update the selected satellite's orbit arc. `count` is a vertex count. */
+  /** Replace the planet orbit-line vertices (two vertices per segment). */
+  updateBodyPaths(positions: Float32Array | null, colors: Float32Array | null, vertexCount: number): void {
+    if (!positions || !colors || vertexCount <= 0) {
+      this.bodyPathGeometry.setDrawRange(0, 0);
+      return;
+    }
+    const n = Math.min(vertexCount, this.bodyPathCapacity);
+    (this.bodyPathPositionsAttr.array as Float32Array).set(positions.subarray(0, n * 3));
+    (this.bodyPathColorsAttr.array as Float32Array).set(colors.subarray(0, n * 3));
+    this.bodyPathPositionsAttr.needsUpdate = true;
+    this.bodyPathColorsAttr.needsUpdate = true;
+    this.bodyPathGeometry.setDrawRange(0, n);
+  }
+
   updateTrack(positions: Float32Array | null, count: number): void {
     if (!positions || count <= 0) {
       this.track.geometry.setDrawRange(0, 0);

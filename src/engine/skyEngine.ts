@@ -11,7 +11,13 @@
  */
 
 import { computeSolarBodies, darknessLevel, moonPhaseName } from '../astro/skyBodies';
-import { computeSkyRotation, applyRefractionVector, type Matrix3 } from '../astro/frame';
+import {
+  applyRefractionVector,
+  computeSkyRotation,
+  eqdToWorldMatrix,
+  type Matrix3,
+  type SkyRotation,
+} from '../astro/frame';
 import { loadSkyData, type SkyData } from '../astro/starCatalog';
 import { QUICK_BODY_TARGETS, QUICK_CONSTELLATIONS, SKY } from '../config';
 import { clamp, normalizeDeg, RAD2DEG } from '../lib/angles';
@@ -42,6 +48,7 @@ import { cameraAzAlt, quatFromAzAlt } from '../sensors/orientationMath';
 import { SensorManager, type SensorStatus } from '../sensors/sensorManager';
 import type { Settings } from '../state/settings';
 import { Constellation } from 'astronomy-engine';
+import { computeBodyPaths, writeBodyPathGeometry, type BodyPath } from '../astro/bodyPaths';
 import { parseTargetId, targetId } from './targets';
 import type {
   AsterismFigure,
@@ -167,6 +174,10 @@ const TRACK_INTERVAL_MS = 8_000;
 const TRACK_BEFORE_MINUTES = 18;
 const TRACK_AFTER_MINUTES = 84;
 const TRACK_CAPACITY = 600;
+/** Vertex capacity for the planet orbit lines (8 bodies × 179 segments × 2). */
+const BODY_PATH_MAX_VERTICES = 4096;
+/** The sampled paths move slowly; recompute the samples at most this often. */
+const BODY_PATH_BUCKET_MS = 6 * 3600 * 1000;
 
 interface PointerState {
   id: number;
@@ -262,6 +273,13 @@ export class SkyEngine {
   private trackPositions = new Float32Array(TRACK_CAPACITY * 3);
   private trackFor = -1;
   private trackUpdatedAt = 0;
+
+  // Planet orbit lines: RA/Dec samples cached per time/observer bucket, projected
+  // onto the current sky rotation every astronomy tick.
+  private bodyPathCache: { key: string; paths: BodyPath[] } | null = null;
+  private bodyPathPositions = new Float32Array(BODY_PATH_MAX_VERTICES * 3);
+  private bodyPathColors = new Float32Array(BODY_PATH_MAX_VERTICES * 3);
+  private bodyPathVertexCount = 0;
 
   // Frame state.
   private worldWidth = 1;
@@ -440,6 +458,7 @@ export class SkyEngine {
       asterismVertices: Math.max(512, (this.asterismGeometry?.segments.length ?? 0) * 2),
       satellites: Math.max(256, this.records.length),
       trackPoints: TRACK_CAPACITY,
+      bodyPathVertices: BODY_PATH_MAX_VERTICES,
     });
     this.labels = new LabelLayer(this.options.hudCanvas);
     this.applyLayers();
@@ -572,6 +591,7 @@ export class SkyEngine {
       satellites: this.settings.showSatellites,
       horizon: this.settings.showHorizon,
       orbits: this.settings.showOrbits,
+      bodyPaths: this.settings.showBodyPaths,
     };
     this.renderer?.setLayers(layers);
   }
@@ -1019,10 +1039,58 @@ export class SkyEngine {
     );
     this.renderer?.updateConstellationLines(this.constellationPositions, this.constellationVertices);
     this.renderer?.updateAsterismLines(this.asterismPositions, this.asterismVertices);
+    this.updateBodyPaths(date, rotation);
 
     this.buildBodies();
     this.buildItems(nowMs);
     this.updateTrack(nowMs);
+  }
+
+  /**
+   * Draw each planet's apparent path against the stars for the next year.
+   *
+   * Samples are recomputed only when the time/observer bucket changes (they
+   * drift by well under a degree per bucket); the projection onto the current
+   * sky rotation runs every astronomy tick so the lines stay glued to the stars
+   * while the night rotates.
+   */
+  private updateBodyPaths(date: Date, rotation: SkyRotation): void {
+    const observer = this.observer;
+    if (!this.settings.showBodyPaths || !observer) {
+      if (this.bodyPathVertexCount !== 0) {
+        this.bodyPathVertexCount = 0;
+        this.renderer?.updateBodyPaths(null, null, 0);
+      }
+      return;
+    }
+
+    const key = `${Math.floor(date.getTime() / BODY_PATH_BUCKET_MS)}|${observer.lat.toFixed(2)}|${observer.lon.toFixed(2)}`;
+    if (!this.bodyPathCache || this.bodyPathCache.key !== key) {
+      this.bodyPathCache = { key, paths: computeBodyPaths(date, observer) };
+    }
+
+    const selectedBody =
+      this.selection && this.selection.kind === 'body' ? (this.selection.id as SolarBodyId) : null;
+    const matrix = eqdToWorldMatrix(rotation.localSiderealHours, observer.lat);
+    this.bodyPathVertexCount =
+      writeBodyPathGeometry(
+        this.bodyPathCache.paths,
+        matrix,
+        {
+          selectedBody,
+          skyRadius: SKY_RADIUS,
+          maxVertices: BODY_PATH_MAX_VERTICES,
+          dim: 0.85,
+          bright: 1.7,
+        },
+        this.bodyPathPositions,
+        this.bodyPathColors,
+      ) || 0;
+    this.renderer?.updateBodyPaths(
+      this.bodyPathPositions,
+      this.bodyPathColors,
+      this.bodyPathVertexCount,
+    );
   }
 
   private updateStars(matrix: Matrix3): void {

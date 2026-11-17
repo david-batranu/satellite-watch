@@ -19,6 +19,8 @@ desktop the app falls back to drag-to-look.
   <img src="docs/screenshots/landscape.png" width="420" alt="Landscape sky view with satellites, planets and constellations" />
 </p>
 <p align="center">
+  <img src="docs/screenshots/planet-orbits.png" width="270" alt="Planet orbit lines against the stars, with Mars's retrograde loop" />
+  &nbsp;
   <img src="docs/screenshots/onboarding.png" width="240" alt="Permission onboarding" />
   &nbsp;
   <img src="docs/screenshots/settings.png" width="240" alt="Settings sheet" />
@@ -39,6 +41,10 @@ desktop the app falls back to drag-to-look.
   with its actual phase, plus next rise/set and the constellation each body is in.
 - **Stars and constellations** — 5,044 Hipparcos stars to magnitude 6, coloured by B−V, with the
   88 IAU constellation figures and named asterisms, precessed to the current epoch.
+- **Planet orbits** — each planet's apparent path against the stars over the next year, plus the
+  Sun's path (the ecliptic). The curves show how planets move through the zodiac, including the
+  retrograde loops of Mercury, Venus and Mars; the selected body's path is drawn brighter.
+  Toggle in Settings → Sky layers.
 - **Calibration** — heading, pitch, field of view and sensor-status diagnostics, because phone
   compasses are never perfectly aligned.
 - **Graceful degradation** — no GPS: manual coordinates or city presets. No compass: gyro fusion or
@@ -141,7 +147,8 @@ above a noise dead band, and the accelerometer is only used as a slow tilt refer
 orientation events go quiet — so resting sensor noise never reaches the sky, while 10–20 Hz sensor
 events still look smooth at 60 fps. `Camera smoothing` in Settings scales the time constants.
 
-**Rendering.** one WebGL draw pass for stars, constellation lines, satellites and the orbit track,
+**Rendering.** one WebGL draw pass for stars, constellation lines, satellites, the selected
+satellite's orbit track and the planet orbit lines,
 plus a 2D canvas for labels, the heading ribbon, the Sun/Moon/planet discs, the reticle and the
 off-screen target arrow. Labels are collision-avoided against each other, the DOM chrome and the
 reticle. Points are drawn through small custom shaders with per-vertex size and colour, so a

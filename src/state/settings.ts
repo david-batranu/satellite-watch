@@ -20,6 +20,8 @@ export interface Settings {
   showPlanets: boolean;
   showHorizon: boolean;
   showOrbits: boolean;
+  /** Apparent orbit lines for the Sun and planets. */
+  showBodyPaths: boolean;
   showLabels: boolean;
   showFps: boolean;
   cameraEnabled: boolean;
@@ -50,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showPlanets: true,
   showHorizon: true,
   showOrbits: true,
+  showBodyPaths: true,
   showLabels: true,
   showFps: false,
   cameraEnabled: true,
@@ -96,6 +99,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     showPlanets: boolOr(input.showPlanets, DEFAULT_SETTINGS.showPlanets),
     showHorizon: boolOr(input.showHorizon, DEFAULT_SETTINGS.showHorizon),
     showOrbits: boolOr(input.showOrbits, DEFAULT_SETTINGS.showOrbits),
+    showBodyPaths: boolOr(input.showBodyPaths, DEFAULT_SETTINGS.showBodyPaths),
     showLabels: boolOr(input.showLabels, DEFAULT_SETTINGS.showLabels),
     showFps: boolOr(input.showFps, DEFAULT_SETTINGS.showFps),
     cameraEnabled: boolOr(input.cameraEnabled, DEFAULT_SETTINGS.cameraEnabled),
